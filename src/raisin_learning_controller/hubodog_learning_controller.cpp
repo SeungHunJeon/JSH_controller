@@ -8,7 +8,7 @@ namespace raisin {
 namespace controller {
 
   bool HubodogLearningController::create(raisim::World* world) {
-    control_dt_ = 0.04;
+    control_dt_ = 0.02;
     communication_dt_ = 0.002;
     hubodogController_.create(world);
     module_ = std::make_unique<torch::jit::script::Module>(torch::jit::load("../rsc/policy_20000.pt"));
@@ -69,14 +69,15 @@ namespace controller {
   }
 
   bool HubodogLearningController::advance(raisim::World* world) {
-    if(clk_ % (int(control_dt/communication_dt + 1e-10) / 2) == 0) { /// 50Hz
+    if(clk_ % (int(control_dt_ / communication_dt_ + 1e-10) / 2) == 0) /// 100Hz
       hubodogController_.updateObservation(world);
-      if(clk_ % int(control_dt/communication_dt + 1e-10) == 0) { /// 25Hz
-        hubodogController_.advance(world, obsScalingAndGetAction());
-        hubodogController_.updatePreviousAction();
-      }
+
+    if(clk_ % int(control_dt_ / communication_dt_ + 1e-10) == 0) /// 50Hz
+      hubodogController_.advance(world, obsScalingAndGetAction());
+
+    if(clk_ % (int(control_dt_ / communication_dt_ + 1e-10) / 2) == 0) /// 100Hz
       hubodogController_.updateHistory();
-    }
+
     clk_++;
     return true;
   }

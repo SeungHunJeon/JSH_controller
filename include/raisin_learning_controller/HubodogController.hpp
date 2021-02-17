@@ -26,6 +26,7 @@ class HubodogController {
     SMOOTHNESS1,
     SMOOTHNESS2,
     ORIENTATION,
+    JOINT_POS,
     JOINT_VEL,
     JOINT_ACCEL,
     AIRTIME,
@@ -67,7 +68,7 @@ class HubodogController {
     hubodog->setGeneralizedForce(Eigen::VectorXd::Zero(gvDim_));
 
     /// MUST BE DONE FOR ALL ENVIRONMENTS
-    obDim_ = 113;
+    obDim_ = 132;
     actionDim_ = nJoints_;
     actionMean_.setZero(actionDim_); actionStd_.setZero(actionDim_);
     previousAction_.setZero(actionDim_); prepreviousAction_.setZero(actionDim_);
@@ -93,7 +94,7 @@ class HubodogController {
     footFrameIndices_.push_back(hubodog->getFrameIdxByName("RR_foot_fixed"));
     footFrameIndices_.push_back(hubodog->getFrameIdxByName("RL_foot_fixed"));
 
-    numOfRewards_ = 14;
+    numOfRewards_ = 15;
     stepData_.resize(numOfRewards_);
   }
 
@@ -148,7 +149,7 @@ class HubodogController {
     for(int i = 0; i < 3; i++) bodyAng_w[i] = 0.8 * normDist_(gen_) * (1.0 - curriculumFactor);
     /// joint velocities
     Eigen::VectorXd jointVel(12);
-    for(int i = 0; i < 12; i++) jointVel[i] = 3.0 * normDist_(gen_) * (1.0 - curriculumFactor);
+    for(int i = 0; i < 12; i++) jointVel[i] = 1.0 * normDist_(gen_) * (1.0 - curriculumFactor);
     /// combine
     gv_init_ << bodyVel_w.e(), bodyAng_w.e(), jointVel;
 
@@ -159,9 +160,9 @@ class HubodogController {
     }
     else {
       do {
-        command_ << (1 - curriculumFactor * 0.7) * 2.0 * uniDist_(gen_),
-            (1 - curriculumFactor * 0.7) * 1.0 * uniDist_(gen_),
-            (1 - curriculumFactor * 0.7) * 1.2 * uniDist_(gen_);
+        command_ << (1.0 - curriculumFactor * 0.7) * 2.0 * uniDist_(gen_),
+            (1.0 - curriculumFactor * 0.7) * 1.0 * uniDist_(gen_),
+            (1.0 - curriculumFactor * 0.7) * 1.2 * uniDist_(gen_);
       } while(command_.norm() < 0.4);
     }
 
@@ -178,28 +179,14 @@ class HubodogController {
   }
 
   void reset(raisim::World *world) {
-    auto* hubodog = reinterpret_cast<raisim::ArticulatedSystem*>(world->getObject("robot"));
-    gc_init_ << 0, 0, 0.43, 1.0, 0.0, 0.0, 0.0, nominalJointConfig_;
-    gv_init_.setZero();
-    hubodog->setGeneralizedCoordinate(gc_init_);
-    raisim::Vec<3> footPosition;
-    double maxNecessaryShift = -1e20; /// some arbitrary high negative value
-    for(auto& foot: footFrameIndices_) {
-      hubodog->getFramePosition(foot, footPosition);
-//      double terrainHeightMinusFootPosition = heightMap_->getHeight(footPosition(0), footPosition(1)) - footPosition(2);
-      double terrainHeightMinusFootPosition = 0.0 - footPosition(2);
-      maxNecessaryShift = maxNecessaryShift > terrainHeightMinusFootPosition ? maxNecessaryShift : terrainHeightMinusFootPosition;
-    }
-    gc_init_(2) += maxNecessaryShift;
-    hubodog->setState(gc_init_, gv_init_);
     updateObservation(world);
-    command_ << 1.0, 0.0, 0.0;
-    stanceTime_.setZero();
+    command_ << 0.0, 0.0, 0.0;
+//    stanceTime_.setZero();
     previousAction_ << actionMean_;
     prepreviousAction_ << previousAction_;
     for(int i = 0; i < historyLength_; i++) {
       jointPosHist_.segment(nJoints_ * i, nJoints_).setZero();
-      jointVelHist_.segment(nJoints_ * i, nJoints_) = gv_init_.tail(nJoints_);
+      jointVelHist_.segment(nJoints_ * i, nJoints_) = gv_.tail(nJoints_);
     }
   }
 
@@ -211,6 +198,8 @@ class HubodogController {
     pTarget12_ = pTarget12_.cwiseProduct(actionStd_);
     pTarget12_ += actionMean_;
     pTarget_.tail(nJoints_) = pTarget12_;
+    prepreviousAction_ = previousAction_;
+    previousAction_ = pTarget12_;
 
     hubodog->setPdTarget(pTarget_, vTarget_);
   }
@@ -219,23 +208,25 @@ class HubodogController {
     command_ = command.cast<double>();
   }
 
+  /*
   void updateHeightScan() {
-//    for(int i = 0; i < nLegs_; i++) {
-//      for(int k = 0; k < scanConfig_.size(); k++) {
-//        for(int j = 0; j < scanConfig_[k]; j++) {
-//          const double distance = 0.10 * k;
-//          const double angle = 2.0 * M_PI * double(j)/scanConfig_[k];
-//          scanPoint_[i][scanConfig_.head(k).sum() + j][0] = footPos_[i][0] + controlFrameX_[0] * distance * cos(angle) + controlFrameY_[0] * distance * sin(angle);
-//          scanPoint_[i][scanConfig_.head(k).sum() + j][1] = footPos_[i][1] + controlFrameX_[1] * distance * cos(angle) + controlFrameY_[1] * distance * sin(angle);
-//          scanPoint_[i][scanConfig_.head(k).sum() + j][0] += normDist_(gen_) * 0.004;
-//          scanPoint_[i][scanConfig_.head(k).sum() + j][1] += normDist_(gen_) * 0.004;
+    for(int i = 0; i < nLegs_; i++) {
+      for(int k = 0; k < scanConfig_.size(); k++) {
+        for(int j = 0; j < scanConfig_[k]; j++) {
+          const double distance = 0.10 * k;
+          const double angle = 2.0 * M_PI * double(j)/scanConfig_[k];
+          scanPoint_[i][scanConfig_.head(k).sum() + j][0] = footPos_[i][0] + controlFrameX_[0] * distance * cos(angle) + controlFrameY_[0] * distance * sin(angle);
+          scanPoint_[i][scanConfig_.head(k).sum() + j][1] = footPos_[i][1] + controlFrameX_[1] * distance * cos(angle) + controlFrameY_[1] * distance * sin(angle);
+          scanPoint_[i][scanConfig_.head(k).sum() + j][0] += normDist_(gen_) * 0.004;
+          scanPoint_[i][scanConfig_.head(k).sum() + j][1] += normDist_(gen_) * 0.004;
 
-//          heightScan_[i][scanConfig_.head(k).sum() + j] = heightMap_->getHeight(scanPoint_[i][scanConfig_.head(k).sum() + j][0], scanPoint_[i][scanConfig_.head(k).sum() + j][1]) - footPos_[i][2];
-//          heightScan_[i][scanConfig_.head(k).sum() + j] += normDist_(gen_) * 0.01;
-//        }
-//      }
-//    }
+          heightScan_[i][scanConfig_.head(k).sum() + j] = heightMap_->getHeight(scanPoint_[i][scanConfig_.head(k).sum() + j][0], scanPoint_[i][scanConfig_.head(k).sum() + j][1]) - footPos_[i][2];
+          heightScan_[i][scanConfig_.head(k).sum() + j] += normDist_(gen_) * 0.01;
+        }
+      }
+    }
   }
+   */
 
   void updateHistory() {
     historyTempMem_ = jointVelHist_;
@@ -247,11 +238,6 @@ class HubodogController {
     jointPosHist_.tail(nJoints_) = pTarget12_ - gc_.tail(nJoints_);
   }
 
-  void updatePreviousAction() {
-    prepreviousAction_ = previousAction_;
-    previousAction_ = pTarget12_;
-  }
-
   void getReward(raisim::World *world, const std::map<RewardType, float>& rewardCoeff, double simulation_dt, double curriculumFactor) {
     auto* hubodog = reinterpret_cast<raisim::ArticulatedSystem*>(world->getObject("robot"));
     previousJointVel_ = gv_.tail(nJoints_);
@@ -261,13 +247,14 @@ class HubodogController {
     float negativeRewardSum = 0.0;
     float positiveRewardSum = 0.0;
     /// smooth reward
-    float smoothReward1 = rewardCoeff.at(RewardType::SMOOTHNESS1) * (1 - curriculumFactor * 0.7) * (pTarget12_ - previousAction_).squaredNorm();
-    float smoothReward2 = rewardCoeff.at(RewardType::SMOOTHNESS2) * (1 - curriculumFactor * 0.7) * (pTarget12_ - 2 * previousAction_ + prepreviousAction_).squaredNorm();
+    float smoothReward1 = rewardCoeff.at(RewardType::SMOOTHNESS1) * (pTarget12_ - previousAction_).squaredNorm();
+    float smoothReward2 = rewardCoeff.at(RewardType::SMOOTHNESS2) * (pTarget12_ - 2 * previousAction_ + prepreviousAction_).squaredNorm();
     /// torque reward
-    float torqueReward = rewardCoeff.at(RewardType::TORQUE) * (1 - curriculumFactor * 0.7) * hubodog->getGeneralizedForce().squaredNorm();
+    float torqueReward = rewardCoeff.at(RewardType::TORQUE) * hubodog->getGeneralizedForce().squaredNorm();
     /// joint reward
-    float jointVelReward = rewardCoeff.at(RewardType::JOINT_VEL) * (1 - curriculumFactor * 0.7) * gv_.tail(nJoints_).squaredNorm();
-    float jointAccelReward = rewardCoeff.at(RewardType::JOINT_ACCEL) * (1 - curriculumFactor * 0.7) * (previousJointVel_ - gv_.tail(nJoints_)).squaredNorm();
+    float jointPosReward = rewardCoeff.at(RewardType::JOINT_POS) * (gc_.tail(nJoints_) - nominalJointConfig_).squaredNorm();
+    float jointVelReward = rewardCoeff.at(RewardType::JOINT_VEL) * gv_.tail(nJoints_).squaredNorm();
+    float jointAccelReward = rewardCoeff.at(RewardType::JOINT_ACCEL) * (previousJointVel_ - gv_.tail(nJoints_)).squaredNorm();
     ///command tracking reward
     float baseMotionReward = 0.0;
     float linVelReward = rewardCoeff.at(RewardType::LINEAR_VEL) * std::exp(-1.0 * (bodyLinearVel_.head(2) - command_.head(2)).squaredNorm());
@@ -278,26 +265,28 @@ class HubodogController {
     baseMotionReward *= rewardCoeff.at(RewardType::BASE_MOTION);
     commandTrackingReward = linVelReward + angVelReward + baseMotionReward;
     /// orientation reward
-    float orientationReward = rewardCoeff.at(RewardType::ORIENTATION) * (1 - curriculumFactor * 0.7) * std::acos(rot_(8)) * std::acos(rot_(8));
+    float orientationReward = rewardCoeff.at(RewardType::ORIENTATION) * std::acos(rot_(8)) * std::acos(rot_(8));
     /// slip reward
     float slipReward = 0.0;
     for(int i = 0; i < nLegs_; i++)
       if(footContactState_[i]) {
         slipReward += footVel_[i].e().head(2).squaredNorm();
       }
-    slipReward *= (1 - curriculumFactor * 0.9) * rewardCoeff.at(RewardType::SLIP);
+    slipReward *= rewardCoeff.at(RewardType::SLIP);
     /// airtime reward
     float airtimeReward = 0.0;
-
     for(int i = 0; i < nLegs_; i++)
       if(footContactState_[i])
         stanceTime_(i) = std::max(0., stanceTime_(i)) + simulation_dt;
       else
         stanceTime_(i) = std::min(0., stanceTime_(i)) - simulation_dt;
-
     if(standingMode_) {
-      for(int i = 0; i < nLegs_; i++)
-        airtimeReward += std::min(stanceTime_[i], 0.4);
+      for(int i = 0; i < nLegs_; i++) {
+        if(stanceTime_(i) > 0.0)
+          airtimeReward += std::min(stanceTime_[i], 0.4);
+        if(stanceTime_(i) < 0.0)
+          airtimeReward += std::min(-stanceTime_[i], 0.0);
+      }
     }
     else {
       for(int i = 0; i < nLegs_; i++)
@@ -307,9 +296,9 @@ class HubodogController {
         if(stanceTime_[i] > -0.4 && stanceTime_[i] < 0.0)
           airtimeReward += std::min(-stanceTime_[i], 0.3);
     }
-    airtimeReward *= (1 - curriculumFactor * 0.8) * rewardCoeff.at(RewardType::AIRTIME);
+    airtimeReward *= rewardCoeff.at(RewardType::AIRTIME);
 
-    negativeRewardSum = smoothReward1 + smoothReward2 + torqueReward + jointVelReward + jointAccelReward + baseMotionReward + orientationReward + slipReward;
+    negativeRewardSum = smoothReward1 + smoothReward2 + torqueReward + jointPosReward + jointVelReward + jointAccelReward + baseMotionReward + orientationReward + slipReward;
     positiveRewardSum = linVelReward + angVelReward + airtimeReward;
 
     stepData_[0] = commandTrackingReward;
@@ -318,14 +307,15 @@ class HubodogController {
     stepData_[3] = baseMotionReward;
     stepData_[4] = airtimeReward;
     stepData_[5] = torqueReward;
-    stepData_[6] = jointVelReward;
-    stepData_[7] = jointAccelReward;
-    stepData_[8] = orientationReward;
-    stepData_[9] = slipReward;
-    stepData_[10] = smoothReward1;
-    stepData_[11] = smoothReward2;
-    stepData_[12] = negativeRewardSum;
-    stepData_[13] = positiveRewardSum;
+    stepData_[6] = jointPosReward;
+    stepData_[7] = jointVelReward;
+    stepData_[8] = jointAccelReward;
+    stepData_[9] = orientationReward;
+    stepData_[10] = slipReward;
+    stepData_[11] = smoothReward1;
+    stepData_[12] = smoothReward2;
+    stepData_[13] = negativeRewardSum;
+    stepData_[14] = positiveRewardSum;
   }
 
   void updateObservation(raisim::World *world) {
@@ -372,17 +362,19 @@ class HubodogController {
 //    updateHeightScan();
 
 //    obDouble_ << gc_(2) - heightMap_->getHeight(gc_(0), gc_(1)), /// body height 1
-    obDouble_ << gc_(2), /// body height 1
-        rot_.e().row(2).transpose(), /// body orientation 3
+//    obDouble_ << gc_(2), /// body height 1
+    obDouble_ <<
+              rot_.e().row(2).transpose(), /// body orientation 3
         gc_.tail(12), /// joint angles 12
         bodyLinearVel_, bodyAngularVel_, /// body linear&angular velocity 6
         gv_.tail(12), /// joint velocity 12
         previousAction_, /// previous action 12
         prepreviousAction_, /// preprevious action 12
 //        heightScan_[0].e(), heightScan_[1].e(), heightScan_[2].e(), heightScan_[3].e(), /// height scan 144
-        jointPosHist_.segment((historyLength_ - 2) * nJoints_, nJoints_), jointVelHist_.segment((historyLength_ - 2) * nJoints_, nJoints_), /// joint History t-0.04 24
-        jointPosHist_.segment((historyLength_ - 1) * nJoints_, nJoints_), jointVelHist_.segment((historyLength_ - 1) * nJoints_, nJoints_), /// joint History t-0.02 24
-        stanceTime_, /// stance Time 4
+        jointPosHist_.segment((historyLength_ - 3) * nJoints_, nJoints_), jointVelHist_.segment((historyLength_ - 3) * nJoints_, nJoints_), /// joint History t-0.03 24
+        jointPosHist_.segment((historyLength_ - 2) * nJoints_, nJoints_), jointVelHist_.segment((historyLength_ - 2) * nJoints_, nJoints_), /// joint History t-0.02 24
+        jointPosHist_.segment((historyLength_ - 1) * nJoints_, nJoints_), jointVelHist_.segment((historyLength_ - 1) * nJoints_, nJoints_), /// joint History t-0.01 24
+//        stanceTime_, /// stance Time 4
         command_; /// command_ 3
 
     return obDouble_;

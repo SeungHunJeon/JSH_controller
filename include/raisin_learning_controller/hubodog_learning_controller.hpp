@@ -5,7 +5,9 @@
 #ifndef RAISIN_LEARNING_CONTROLLER_SRC_RAISIN_LEARNING_CONTROLLER_HUBODOG_LEARNING_CONTROLLER_HPP_
 #define RAISIN_LEARNING_CONTROLLER_SRC_RAISIN_LEARNING_CONTROLLER_HUBODOG_LEARNING_CONTROLLER_HPP_
 
+#include "raisim/World.hpp"
 #include "raisin_learning_controller/HubodogController.hpp"
+#include "raisin_parameter/parameter_container.hpp"
 #include "raisin_controller/controller.hpp"
 #include "torch/script.h"
 
@@ -30,7 +32,7 @@ class HubodogLearningController : public Controller {
   raisim::HubodogController hubodogController_;
   Eigen::VectorXf obs_, obsMean_, obsVariance_;
   int clk_ = 0;
-  double control_dt_; communication_dt_;
+  double control_dt_, communication_dt_;
   std::unique_ptr<torch::jit::script::Module> module_;
 
 };

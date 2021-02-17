@@ -15,11 +15,11 @@ list(APPEND CMAKE_PREFIX_PATH "../raisin_torch/pytorch/libtorch")
 find_package(ament_cmake REQUIRED)
 find_package(Torch REQUIRED)
 find_package(raisin_controller REQUIRED)
-#add_library(${PROJECT_NAME} SHARED
-#        src/${PROJECT_NAME}/hubodog_learning_controller.cpp
-#        )
+add_library(${PROJECT_NAME} SHARED
+        src/${PROJECT_NAME}/hubodog_learning_controller.cpp
+        )
 
-add_executable(${PROJECT_NAME} src/${PROJECT_NAME}/controller_test.cpp)
+#add_executable(${PROJECT_NAME} src/${PROJECT_NAME}/controller_test.cpp)
 target_link_libraries(${PROJECT_NAME} raisin_controller::raisin_controller ${TORCH_LIBRARIES})
 target_include_directories(${PROJECT_NAME}
         PUBLIC
