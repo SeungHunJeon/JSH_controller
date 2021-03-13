@@ -11,24 +11,27 @@
 #include "raisin_controller/controller.hpp"
 #include "torch/script.h"
 
-namespace raisin {
+namespace raisin
+{
 
-namespace controller {
+namespace controller
+{
 
-class HubodogLearningController : public Controller {
+class HubodogLearningController : public Controller
+{
 
- public:
-  bool create(raisim::World* world) final;
-  bool init(raisim::World* world) final;
+public:
+  bool create(raisim::World * world) final;
+  bool init(raisim::World * world) final;
+  torch::Tensor eigenVectorToTorchTensor(const Eigen::VectorXf & e);
+  Eigen::VectorXf torchTensorToEigenVector(const torch::Tensor & t);
   Eigen::VectorXf obsScalingAndGetAction();
-  torch::Tensor eigenVectorToTorchTensor(const Eigen::VectorXf& e);
-  Eigen::VectorXf torchTensorToEigenVector(const torch::Tensor& t);
-  bool advance(raisim::World* world) final;
-  bool reset(raisim::World* world) final;
-  bool terminate(raisim::World* world) final;
-  bool stop(raisim::World* world) final;
+  bool advance(raisim::World * world) final;
+  bool reset(raisim::World * world) final;
+  bool terminate(raisim::World * world) final;
+  bool stop(raisim::World * world) final;
 
- private:
+private:
   raisim::HubodogController hubodogController_;
   Eigen::VectorXf obs_, obsMean_, obsVariance_;
   int clk_ = 0;

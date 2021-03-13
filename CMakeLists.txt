@@ -19,7 +19,6 @@ add_library(${PROJECT_NAME} SHARED
         src/${PROJECT_NAME}/hubodog_learning_controller.cpp
         )
 
-#add_executable(${PROJECT_NAME} src/${PROJECT_NAME}/controller_test.cpp)
 target_link_libraries(${PROJECT_NAME} raisin_controller::raisin_controller ${TORCH_LIBRARIES})
 target_include_directories(${PROJECT_NAME}
         PUBLIC

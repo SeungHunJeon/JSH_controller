@@ -198,8 +198,6 @@ class HubodogController {
     pTarget12_ = pTarget12_.cwiseProduct(actionStd_);
     pTarget12_ += actionMean_;
     pTarget_.tail(nJoints_) = pTarget12_;
-    prepreviousAction_ = previousAction_;
-    previousAction_ = pTarget12_;
 
     hubodog->setPdTarget(pTarget_, vTarget_);
   }
@@ -236,6 +234,11 @@ class HubodogController {
     historyTempMem_ = jointPosHist_;
     jointPosHist_.head((historyLength_-1) * nJoints_) = historyTempMem_.tail((historyLength_-1) * nJoints_);
     jointPosHist_.tail(nJoints_) = pTarget12_ - gc_.tail(nJoints_);
+  }
+
+  void updatePreviousAction() {
+    prepreviousAction_ = previousAction_;
+    previousAction_ = pTarget12_;
   }
 
   void getReward(raisim::World *world, const std::map<RewardType, float>& rewardCoeff, double simulation_dt, double curriculumFactor) {
@@ -371,9 +374,9 @@ class HubodogController {
         previousAction_, /// previous action 12
         prepreviousAction_, /// preprevious action 12
 //        heightScan_[0].e(), heightScan_[1].e(), heightScan_[2].e(), heightScan_[3].e(), /// height scan 144
-        jointPosHist_.segment((historyLength_ - 3) * nJoints_, nJoints_), jointVelHist_.segment((historyLength_ - 3) * nJoints_, nJoints_), /// joint History t-0.03 24
-        jointPosHist_.segment((historyLength_ - 2) * nJoints_, nJoints_), jointVelHist_.segment((historyLength_ - 2) * nJoints_, nJoints_), /// joint History t-0.02 24
-        jointPosHist_.segment((historyLength_ - 1) * nJoints_, nJoints_), jointVelHist_.segment((historyLength_ - 1) * nJoints_, nJoints_), /// joint History t-0.01 24
+        jointPosHist_.segment((historyLength_ - 3) * nJoints_, nJoints_), jointVelHist_.segment((historyLength_ - 3) * nJoints_, nJoints_), /// joint History t-0.06 24
+        jointPosHist_.segment((historyLength_ - 2) * nJoints_, nJoints_), jointVelHist_.segment((historyLength_ - 2) * nJoints_, nJoints_), /// joint History t-0.04 24
+        jointPosHist_.segment((historyLength_ - 1) * nJoints_, nJoints_), jointVelHist_.segment((historyLength_ - 1) * nJoints_, nJoints_), /// joint History t-0.02 24
 //        stanceTime_, /// stance Time 4
         command_; /// command_ 3
 
