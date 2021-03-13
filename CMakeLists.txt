@@ -13,6 +13,7 @@ endif()
 
 list(APPEND CMAKE_PREFIX_PATH "../raisin_torch/pytorch/libtorch")
 find_package(ament_cmake REQUIRED)
+find_package(ament_index_cpp REQUIRED)
 find_package(Torch REQUIRED)
 find_package(raisin_controller REQUIRED)
 add_library(${PROJECT_NAME} SHARED
