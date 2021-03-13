@@ -19,8 +19,8 @@ bool HubodogLearningController::create(raisim::World * world)
         "/home/youmdonghoon/raisin_ws/src/raisin/raisin_learning_controller/rsc/policy_30000.pt"));
   RSFATAL_IF(module_ == nullptr, "module is not loaded")
   std::string in_line;
-  std::ifstream obsMean_file("../rsc/mean30000.csv");
-  std::ifstream obsVariance_file("../rsc/var30000.csv");
+  std::ifstream obsMean_file("/home/youmdonghoon/raisin_ws/src/raisin/raisin_learning_controller/rsc/mean30000.csv");
+  std::ifstream obsVariance_file("/home/youmdonghoon/raisin_ws/src/raisin/raisin_learning_controller/rsc/var30000.csv");
   obs_.setZero(hubodogController_.getObDim());
   obsMean_.setZero(hubodogController_.getObDim());
   obsVariance_.setZero(hubodogController_.getObDim());
