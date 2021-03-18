@@ -9,7 +9,11 @@
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
+  <depend>rclcpp</depend>
+  <depend>std_srvs</depend>
   <depend>raisin_controller</depend>
+  <depend>raisin_torch</depend>
+  <depend>raisin_interfaces</depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>

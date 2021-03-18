@@ -1,6 +1,8 @@
 //
 // Created by youmdonghoon on 21. 2. 9..
 //
+#include <filesystem>
+#include "ament_index_cpp/get_package_prefix.hpp"
 #include "raisin_learning_controller/hubodog_learning_controller.hpp"
 
 namespace raisin
@@ -9,18 +11,36 @@ namespace raisin
 namespace controller
 {
 
+using std::placeholders::_1;
+using std::placeholders::_2;
+
+HubodogLearningController::HubodogLearningController()
+: Controller("raisin_learning_controller"),
+  param_(parameter::ParameterContainer::getRoot()["HubodogLearningController"])
+{
+  param_.loadFromPackageParameterFile("raisin_learning_controller");
+
+  serviceSetCommand_ = this->create_service<raisin_interfaces::srv::Vector3>(
+    "raisin_learning_controller/set_command", std::bind(&HubodogLearningController::setCommand, this, _1, _2));
+}
+
 bool HubodogLearningController::create(raisim::World * world)
 {
   control_dt_ = 0.02;
   communication_dt_ = 0.002;
   hubodogController_.create(world);
+
+  std::filesystem::path pack_path(ament_index_cpp::get_package_prefix("raisin_learning_controller"));
+  std::filesystem::path policy_path = pack_path / std::string(param_("policy_path"));
+  std::filesystem::path mean_path = pack_path / std::string(param_("mean_path"));
+  std::filesystem::path var_path = pack_path / std::string(param_("var_path"));
+
   module_ =
-    std::make_unique<torch::jit::script::Module>(torch::jit::load(
-        "/home/youmdonghoon/raisin_ws/src/raisin/raisin_learning_controller/rsc/policy_30000.pt"));
+    std::make_unique<torch::jit::script::Module>(torch::jit::load(policy_path.string()));
   RSFATAL_IF(module_ == nullptr, "module is not loaded")
   std::string in_line;
-  std::ifstream obsMean_file("/home/youmdonghoon/raisin_ws/src/raisin/raisin_learning_controller/rsc/mean30000.csv");
-  std::ifstream obsVariance_file("/home/youmdonghoon/raisin_ws/src/raisin/raisin_learning_controller/rsc/var30000.csv");
+  std::ifstream obsMean_file(mean_path.string());
+  std::ifstream obsVariance_file(var_path.string());
   obs_.setZero(hubodogController_.getObDim());
   obsMean_.setZero(hubodogController_.getObDim());
   obsVariance_.setZero(hubodogController_.getObDim());
@@ -119,6 +139,19 @@ extern "C" Controller * create()
 extern "C" void destroy(Controller * p)
 {
   delete p;
+}
+
+void HubodogLearningController::setCommand(
+  const std::shared_ptr<raisin_interfaces::srv::Vector3::Request> request,
+  std::shared_ptr<raisin_interfaces::srv::Vector3::Response> response)
+try {
+  Eigen::Vector3f command;
+  command << request->x, request->y, request->z;
+  hubodogController_.setCommand(command);
+  response->success = true;
+} catch (const std::exception& e) {
+  response->success = false;
+  response->message = e.what();
 }
 
 }

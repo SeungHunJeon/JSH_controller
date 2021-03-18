@@ -6,16 +6,19 @@ if(NOT CMAKE_C_STANDARD)
     set(CMAKE_C_STANDARD 99)
 endif()
 
-# Default to C++14
+# Default to C++17
 if(NOT CMAKE_CXX_STANDARD)
-    set(CMAKE_CXX_STANDARD 14)
+    set(CMAKE_CXX_STANDARD 17)
 endif()
 
 list(APPEND CMAKE_PREFIX_PATH "../raisin_torch/pytorch/libtorch")
 find_package(ament_cmake REQUIRED)
 find_package(ament_index_cpp REQUIRED)
+find_package(rclcpp REQUIRED)
+find_package(std_srvs REQUIRED)
 find_package(Torch REQUIRED)
 find_package(raisin_controller REQUIRED)
+find_package(raisin_interfaces REQUIRED)
 add_library(${PROJECT_NAME} SHARED
         src/${PROJECT_NAME}/hubodog_learning_controller.cpp
         )
@@ -25,6 +28,13 @@ target_include_directories(${PROJECT_NAME}
         PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include>)
+
+ament_target_dependencies(${PROJECT_NAME}
+  rclcpp
+  std_srvs
+  ament_index_cpp
+  raisin_interfaces
+)
 
 ament_export_targets(export_${PROJECT_NAME} HAS_LIBRARY_TARGET)
 
@@ -36,6 +46,8 @@ install(
         RUNTIME DESTINATION bin
         INCLUDES DESTINATION include
 )
+install(FILES config/params.yaml DESTINATION share/${PROJECT_NAME})
+install(DIRECTORY rsc DESTINATION lib/..)
 
 if(BUILD_TESTING)
     find_package(ament_lint_auto REQUIRED)

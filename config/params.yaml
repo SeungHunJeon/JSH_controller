@@ -1,0 +1,11 @@
+mean_path:
+  value: rsc/mean30000.csv
+  dtype: string
+
+policy_path:
+  value: rsc/policy_30000.pt
+  dtype: string
+
+var_path:
+  value: rsc/var30000.csv
+  dtype: string
