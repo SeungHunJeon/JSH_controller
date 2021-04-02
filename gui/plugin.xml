@@ -1,0 +1,17 @@
+<library path="src">
+  <class name="LearningControl" type="rqt_raisin_lc.learning_control.LearningControl" base_class_type="rqt_gui_py::Plugin">
+    <description>
+      A Python GUI plugin for Learning controller to control hubodog
+    </description>
+    <qtgui>
+      <group>
+        <label>Raisin</label>
+        <icon type="theme">folder</icon>
+        <statustip>Plugins related to Raisin</statustip>
+      </group>
+      <label>Learning Control</label>
+      <icon type="theme">system-search</icon>
+      <statustip>A Python GUI plugin to control robots with Learning controller.</statustip>
+    </qtgui>
+  </class>
+</library>
