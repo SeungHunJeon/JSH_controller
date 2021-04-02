@@ -11,7 +11,7 @@ if(NOT CMAKE_CXX_STANDARD)
     set(CMAKE_CXX_STANDARD 17)
 endif()
 
-list(APPEND CMAKE_PREFIX_PATH "../raisin_torch/pytorch/libtorch")
+list(APPEND CMAKE_PREFIX_PATH "../../raisin_torch/pytorch/libtorch")
 find_package(ament_cmake REQUIRED)
 find_package(ament_index_cpp REQUIRED)
 find_package(rclcpp REQUIRED)

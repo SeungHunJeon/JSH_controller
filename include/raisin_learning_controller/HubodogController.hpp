@@ -61,7 +61,7 @@ class HubodogController {
     gc_init_ << 0, 0, 0.43, 1.0, 0.0, 0.0, 0.0, nominalJointConfig_;
 
     /// set pd gains
-    double pGain = 50.0, dGain = 0.5;
+    double pGain = 200.0, dGain = 0.8;
     jointPgain_.setZero(gvDim_); jointPgain_.tail(nJoints_).setConstant(pGain);
     jointDgain_.setZero(gvDim_); jointDgain_.tail(nJoints_).setConstant(dGain);
     hubodog->setPdGains(jointPgain_, jointDgain_);
@@ -367,7 +367,7 @@ class HubodogController {
 //    obDouble_ << gc_(2) - heightMap_->getHeight(gc_(0), gc_(1)), /// body height 1
 //    obDouble_ << gc_(2), /// body height 1
     obDouble_ <<
-              rot_.e().row(2).transpose(), /// body orientation 3
+        rot_.e().row(2).transpose(), /// body orientation 3
         gc_.tail(12), /// joint angles 12
         bodyLinearVel_, bodyAngularVel_, /// body linear&angular velocity 6
         gv_.tail(12), /// joint velocity 12
