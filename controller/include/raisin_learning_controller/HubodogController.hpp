@@ -61,7 +61,7 @@ class HubodogController {
     gc_init_ << 0, 0, 0.43, 1.0, 0.0, 0.0, 0.0, nominalJointConfig_;
 
     /// set pd gains
-    double pGain = 200.0, dGain = 0.8;
+    double pGain = 50.0, dGain = 0.5;
     jointPgain_.setZero(gvDim_); jointPgain_.tail(nJoints_).setConstant(pGain);
     jointDgain_.setZero(gvDim_); jointDgain_.tail(nJoints_).setConstant(dGain);
     hubodog->setPdGains(jointPgain_, jointDgain_);
@@ -374,9 +374,9 @@ class HubodogController {
         previousAction_, /// previous action 12
         prepreviousAction_, /// preprevious action 12
 //        heightScan_[0].e(), heightScan_[1].e(), heightScan_[2].e(), heightScan_[3].e(), /// height scan 144
-        jointPosHist_.segment((historyLength_ - 3) * nJoints_, nJoints_), jointVelHist_.segment((historyLength_ - 3) * nJoints_, nJoints_), /// joint History t-0.06 24
-        jointPosHist_.segment((historyLength_ - 2) * nJoints_, nJoints_), jointVelHist_.segment((historyLength_ - 2) * nJoints_, nJoints_), /// joint History t-0.04 24
-        jointPosHist_.segment((historyLength_ - 1) * nJoints_, nJoints_), jointVelHist_.segment((historyLength_ - 1) * nJoints_, nJoints_), /// joint History t-0.02 24
+        jointPosHist_.segment((historyLength_ - 9) * nJoints_, nJoints_), jointVelHist_.segment((historyLength_ - 9) * nJoints_, nJoints_), /// joint History t-0.09 24
+        jointPosHist_.segment((historyLength_ - 6) * nJoints_, nJoints_), jointVelHist_.segment((historyLength_ - 6) * nJoints_, nJoints_), /// joint History t-0.06 24
+        jointPosHist_.segment((historyLength_ - 3) * nJoints_, nJoints_), jointVelHist_.segment((historyLength_ - 3) * nJoints_, nJoints_), /// joint History t-0.03 24
 //        stanceTime_, /// stance Time 4
         command_; /// command_ 3
 
@@ -408,7 +408,7 @@ class HubodogController {
   const Eigen::VectorXd& getStepData() {return stepData_;}
 
  private:
-  constexpr static int historyLength_ = 3;
+  constexpr static int historyLength_ = 10;
   int gcDim_, gvDim_, nJoints_, nLegs_;
   int obDim_ = 0, actionDim_ = 0;
   int numOfRewards_;

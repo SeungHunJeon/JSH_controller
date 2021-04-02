@@ -107,6 +107,8 @@ bool HubodogLearningController::advance(raisim::World * world)
     hubodogController_.updateObservation(world);
     hubodogController_.advance(world, obsScalingAndGetAction());
     hubodogController_.updatePreviousAction();
+  }
+  if (clk_ % (int(control_dt_ / communication_dt_ + 1e-10) / 2) { /// 100Hz
     hubodogController_.updateHistory();
   }
 
