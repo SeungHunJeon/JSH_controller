@@ -21,6 +21,7 @@ find_package(raisin_controller REQUIRED)
 find_package(raisin_interfaces REQUIRED)
 add_library(${PROJECT_NAME} SHARED
         src/${PROJECT_NAME}/hubodog_learning_controller.cpp
+        src/${PROJECT_NAME}/raibot_learning_controller.cpp
         )
 
 target_link_libraries(${PROJECT_NAME} raisin_controller::raisin_controller ${TORCH_LIBRARIES})
