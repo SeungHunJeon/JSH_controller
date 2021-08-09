@@ -39,10 +39,11 @@ class raibotLearningController : public Controller {
   rclcpp::Service<raisin_interfaces::srv::Vector3>::SharedPtr serviceSetCommand_;
 
   raisim::raibotController raibotController_;
-  Eigen::VectorXf obs_, obsMean_, obsVariance_;
+  Eigen::VectorXf obs_, obsMean_, obsVariance_, eoutMean_, eoutVariance_, actor_input_;
   int clk_ = 0;
   double control_dt_, communication_dt_;
-  std::unique_ptr<torch::jit::script::Module> module_;
+  std::unique_ptr<torch::jit::script::Module> actor_;
+  std::unique_ptr<torch::jit::script::Module> estimator_;
   parameter::ParameterContainer & param_;
 };
 

@@ -30,19 +30,29 @@ bool raibotLearningController::create(raisim::World *world) {
   raibotController_.create(world);
 
   std::filesystem::path pack_path(ament_index_cpp::get_package_prefix("raisin_learning_controller"));
-  std::filesystem::path policy_path = pack_path / std::string(param_("policy_path"));
-  std::filesystem::path mean_path = pack_path / std::string(param_("mean_path"));
-  std::filesystem::path var_path = pack_path / std::string(param_("var_path"));
+  std::filesystem::path actor_path = pack_path / std::string(param_("actor_path"));
+  std::filesystem::path estimator_path = pack_path / std::string(param_("estimator_path"));
+  std::filesystem::path obs_mean_path = pack_path / std::string(param_("obs_mean_path"));
+  std::filesystem::path obs_var_path = pack_path / std::string(param_("obs_var_path"));
+  std::filesystem::path eout_mean_path = pack_path / std::string(param_("eout_mean_path"));
+  std::filesystem::path eout_var_path = pack_path / std::string(param_("eout_var_path"));
 
-  module_ = std::make_unique<torch::jit::script::Module>(torch::jit::load(policy_path.string()));
-  RSFATAL_IF(module_ == nullptr, "module is not loaded");
+  actor_ = std::make_unique<torch::jit::script::Module>(torch::jit::load(actor_path.string()));
+  estimator_ = std::make_unique<torch::jit::script::Module>(torch::jit::load(estimator_path.string()));
+  RSFATAL_IF(actor_ == nullptr, "actor is not loaded");
+  RSFATAL_IF(estimator_ == nullptr, "estimator is not loaded");
 
   std::string in_line;
-  std::ifstream obsMean_file(mean_path.string());
-  std::ifstream obsVariance_file(var_path.string());
+  std::ifstream obsMean_file(obs_mean_path.string());
+  std::ifstream obsVariance_file(obs_var_path.string());
+  std::ifstream eoutMean_file(eout_mean_path.string());
+  std::ifstream eoutVariance_file(eout_var_path.string());
   obs_.setZero(raibotController_.getObDim());
   obsMean_.setZero(raibotController_.getObDim());
   obsVariance_.setZero(raibotController_.getObDim());
+  eoutMean_.setZero(raibotController_.getEstDim());
+  eoutVariance_.setZero(raibotController_.getEstDim());
+  actor_input_.setZero(raibotController_.getObDim() + raibotController_.getEstDim());
 
   if (obsMean_file.is_open()) {
     for (int i = 0; i < obsMean_.size(); ++i) {
@@ -58,8 +68,24 @@ bool raibotLearningController::create(raisim::World *world) {
     }
   }
 
+  if (eoutMean_file.is_open()) {
+    for (int i = 0; i < eoutMean_.size(); ++i) {
+      std::getline(eoutMean_file, in_line);
+      eoutMean_(i) = std::stof(in_line);
+    }
+  }
+
+  if (eoutVariance_file.is_open()) {
+    for (int i = 0; i < eoutVariance_.size(); ++i) {
+      std::getline(eoutVariance_file, in_line);
+      eoutVariance_(i) = std::stof(in_line);
+    }
+  }
+
   obsMean_file.close();
   obsVariance_file.close();
+  eoutMean_file.close();
+  eoutVariance_file.close();
   return true;
 }
 
@@ -80,6 +106,7 @@ bool raibotLearningController::advance(raisim::World *world) {
 }
 
 Eigen::Ref<Eigen::VectorXf> raibotLearningController::obsScalingAndGetAction() {
+  /// normalize the obs
   obs_ = raibotController_.getObservation().cast<float>();
   for (int i = 0; i < obs_.size(); ++i) {
     obs_(i) = (obs_(i) - obsMean_(i)) / std::sqrt(obsVariance_(i) + 1e-8);
@@ -87,9 +114,23 @@ Eigen::Ref<Eigen::VectorXf> raibotLearningController::obsScalingAndGetAction() {
     else if (obs_(i) < -10) { obs_(i) = -10.0; }
   }
 
+  /// forward the obs to the estimator
+  std::vector<torch::jit::IValue> e_in;
+  e_in.push_back(eigenVectorToTorchTensor(obs_.tail(obs_.size() - 3)));
+  Eigen::VectorXf e_out = torchTensorToEigenVector(estimator_->forward(e_in).toTensor());
+
+  /// normalize the output of estimator
+  for (int i = 0; i < e_out.size(); ++i) {
+    e_out(i) = (e_out(i) - eoutMean_(i)) / std::sqrt(eoutVariance_(i) + 1e-8);
+    if (e_out(i) > 10) { e_out(i) = 10.0; }
+    else if (e_out(i) < -10) { e_out(i) = -10.0; }
+  }
+
+  /// concat obs and e_out and forward to the actor
+  actor_input_ << obs_, e_out;
   std::vector<torch::jit::IValue> inputs;
-  inputs.push_back(eigenVectorToTorchTensor(obs_));
-  Eigen::VectorXf action = torchTensorToEigenVector(module_->forward(inputs).toTensor());
+  inputs.push_back(eigenVectorToTorchTensor(actor_input_));
+  Eigen::VectorXf action = torchTensorToEigenVector(actor_->forward(inputs).toTensor());
   return action;
 }
 
