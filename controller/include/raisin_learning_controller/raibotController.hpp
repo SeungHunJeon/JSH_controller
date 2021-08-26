@@ -8,15 +8,23 @@
 #pragma once
 
 #include <set>
-#include "BasicEigenTypes.hpp"
+#include "helper/BasicEigenTypes.hpp"
 #include "raisim/World.hpp"
-#include "controlHelper.hpp"
+#include "helper/controlHelper.hpp"
+#include "helper/neuralNet.hpp"
 
 namespace raisim {
 
 class raibotController {
 
  public:
+
+//  raibotController() : actor_(72, 2, {256, 128}) {
+//    actor_.readParamFromTxt("/home/suyoung/Workspace/raisimGymForRaisin/raisimGymTorch/data/raibot+on+rough+terrain+estimation/2021-08-13-04-33-26/actor.txt");
+//    Eigen::Matrix<float, 44, 1> ones; ones.setOnes();
+//    actor_.initHidden();
+//    std::cout<<actor_.forward(ones).transpose()<<std::endl;
+//  };
 
   enum class RewardType : int {
     CMDLINEAR = 1,
@@ -38,6 +46,7 @@ class raibotController {
 
   bool create(raisim::World *world) {
     auto* raibot = reinterpret_cast<raisim::ArticulatedSystem*>(world->getObject("robot"));
+    raibot->setControlMode(ControlMode::PD_PLUS_FEEDFORWARD_TORQUE);
 
     /// get robot data
     gcDim_ = raibot->getGeneralizedCoordinateDim();
@@ -62,7 +71,7 @@ class raibotController {
     raibot->setGeneralizedForce(Eigen::VectorXd::Zero(gvDim_));
 
     /// MUST BE DONE FOR ALL ENVIRONMENTS
-    obDim_ = 36; estDim_=4; hvDim_ = 27;
+    obDim_ = 36; estDim_=8; hvDim_ = 23;
     actionDim_ = nJoints_; actionMean_.setZero(actionDim_); actionStd_.setZero(actionDim_);
     obDouble_.setZero(obDim_); estTarget_.setZero(estDim_); hvDouble_.setZero(hvDim_);
     command_.setZero(); airTime_.setZero(); preTarget_.setZero(actionDim_); pre2Target_.setZero(actionDim_);
@@ -86,6 +95,9 @@ class raibotController {
     footNormalForce_.setZero();
     footSlippage_ = 0.; groundHeight_ = 0.;
     nearFootHeightMap_.setZero(16);
+
+    nominalJointPosWeight_.setZero(nJoints_);
+    nominalJointPosWeight_ << 1.414, 1., 1., 1.414, 1., 1., 1.414, 1., 1., 1.414, 1., 1.;
 
     updateObservation(world);
 
@@ -141,8 +153,13 @@ class raibotController {
 
     standingMode_=false;
     /// command generation
-    command_ << eggSampler(uniDist_(gen_), uniDist_(gen_), 2.5, 1.5, 1.5),
-    uniDist_(gen_) * 1.5; // turning speed
+    if (uniDist_(gen_) < 0.6666) {
+      command_ << eggSampler(uniDist_(gen_), uniDist_(gen_), 2.5, 1.5, 1.5),
+                  uniDist_(gen_) * 1.5; // yaw turning
+    } else {
+      command_ << ovalSampler(uniDist_(gen_), uniDist_(gen_), 2.5, 1.5, 1.5),
+                  uniDist_(gen_) * 1.5; // yaw turning
+    }
     if (command_.norm() < 0.3) { command_.setZero(); standingMode_=true; }
 
     /// external forces and torques
@@ -218,6 +235,8 @@ class raibotController {
       raibot->getFramePosition(footFrameIndices_[i], footPosCur_[i]);
       raibot->getFrameVelocity(footFrameIndices_[i], footVelCur_[i]);
       footPosCur_[i](2) -= heightMap->getHeight(footPosCur_[i](0), footPosCur_[i](1));
+      if (std::abs(footPosCur_[i](0)) > heightMap->getXSize()/2. || std::abs(footPosCur_[i](1)) > heightMap->getYSize()/2.)
+        footPosCur_[i](2) += heightMap->getHeight(footPosCur_[i](0), footPosCur_[i](1));
     }
     footPos_.push_back(footPosCur_);
     footVel_.push_back(footVelCur_);
@@ -271,6 +290,14 @@ class raibotController {
       nearFootHeightMap_[i + 1] = footPosCur_[i/4](2) - heightMap->getHeight(footPosCur_[i/4](0), (footPosCur_[i/4].e() + 0.10 * rot_.e().row(1).transpose())[1]);
       nearFootHeightMap_[i + 2] = footPosCur_[i/4](2) - heightMap->getHeight((footPosCur_[i/4].e() - 0.10 * rot_.e().row(0).transpose())[0], footPosCur_[i/4](1));
       nearFootHeightMap_[i + 3] = footPosCur_[i/4](2) - heightMap->getHeight(footPosCur_[i/4](0), (footPosCur_[i/4].e() - 0.10 * rot_.e().row(1).transpose())[1]);
+      if (std::abs((footPosCur_[i/4].e() + 0.10 * rot_.e().row(0).transpose())[0]) > heightMap->getXSize()/2. || std::abs(footPosCur_[i/4](1)) > heightMap->getYSize()/2.) 
+        nearFootHeightMap_[i + 0] += heightMap->getHeight((footPosCur_[i/4].e() + 0.10 * rot_.e().row(0).transpose())[0], footPosCur_[i/4](1));
+      if (std::abs(footPosCur_[i/4](0)) > heightMap->getXSize()/2. || std::abs((footPosCur_[i/4].e() + 0.10 * rot_.e().row(1).transpose())[1]) > heightMap->getYSize()/2.)
+        nearFootHeightMap_[i + 1] += heightMap->getHeight(footPosCur_[i/4](0), (footPosCur_[i/4].e() + 0.10 * rot_.e().row(1).transpose())[1]);
+      if (std::abs((footPosCur_[i/4].e() - 0.10 * rot_.e().row(0).transpose())[0]) > heightMap->getXSize()/2. || std::abs(footPosCur_[i/4](1)) > heightMap->getYSize()/2.)
+        nearFootHeightMap_[i + 2] += heightMap->getHeight((footPosCur_[i/4].e() - 0.10 * rot_.e().row(0).transpose())[0], footPosCur_[i/4](1));
+      if (std::abs(footPosCur_[i/4](0)) > heightMap->getXSize()/2. || std::abs((footPosCur_[i/4].e() - 0.10 * rot_.e().row(1).transpose())[1]) > heightMap->getYSize()/2.)
+        nearFootHeightMap_[i + 3] += heightMap->getHeight(footPosCur_[i/4](0), (footPosCur_[i/4].e() - 0.10 * rot_.e().row(1).transpose())[1]);
     }
     
     updateObservation(world);
@@ -291,7 +318,7 @@ class raibotController {
     double orientationReward = rewardCoeff.at(RewardType::ORIENTATION) * std::pow(std::acos(rot_(8)), 2);
     double smoothnessReward = rewardCoeff.at(RewardType::SMOOTHNESS) * (pTarget12_ - preTarget_).squaredNorm();
     double smoothness2Reward = rewardCoeff.at(RewardType::SMOOTHNESS2) * (pTarget12_ - 2*preTarget_ + pre2Target_).squaredNorm();
-    double nominalPosReward = rewardCoeff.at(RewardType::NOMINALPOS) * (gc_.tail(12) - gc_init_.tail(12)).squaredNorm();
+    double nominalPosReward = rewardCoeff.at(RewardType::NOMINALPOS) * (gc_.tail(12) - gc_init_.tail(12)).cwiseProduct(nominalJointPosWeight_).squaredNorm();
     double jointAccelReward = rewardCoeff.at(RewardType::JOINTACCEL) * (gv_.tail(12) - preJointVel_).squaredNorm();
     double motionAvoidanceReward = rewardCoeff.at(RewardType::AVOIDANCE) * (0.8 * std::pow(bodyLinearVel_[2], 2) + 0.4 * bodyAngularVel_.head(2).cwiseAbs().sum());
     double footForceReward = rewardCoeff.at(RewardType::FOOTFORCE) * footNormalForceSS_;
@@ -340,21 +367,22 @@ class raibotController {
   }
 
   void updateEstTarget() {
-    /// estimation
-    estTarget_ << gc_[2] - groundHeight_, /// body height 1
-        bodyLinearVel_; /// body linear velocity 3
-  }
-
-  void updateHyperVision() {
     Eigen::Vector4d footHeight;
     for (int i = 0; i < footPosCur_.size(); ++i)
       footHeight[i] = footPosCur_[i].e()[2];
+
+    /// estimation
+    estTarget_ << gc_[2] - groundHeight_, /// body height 1
+        bodyLinearVel_, /// body linear velocity 3
+        footHeight; /// foot clearance 4
+  }
+
+  void updateHyperVision() {
 
     /// hypervision: Asymmetric Actor-Critic
     hvDouble_ << airtimeTotal_, /// 1
         footSlippage_, /// 1
         c_f_, /// friction coefficient 1
-        footHeight, /// 4
         footNormalForce_, /// 4
         nearFootHeightMap_; /// ground height near the foot 16
   }
@@ -414,7 +442,9 @@ private:
   std::vector<std::vector<raisim::Vec<3>>> footPos_, footVel_;
   std::vector<bool> contactStateCur_;
   std::vector<std::vector<bool>> contactState_;
-  Eigen::VectorXd nearFootHeightMap_;
+  Eigen::VectorXd nearFootHeightMap_, nominalJointPosWeight_;
+
+//  raisim::nn::LSTM_MLP<float, 44, 12, raisim::nn::ActivationType::leaky_relu> actor_;
 };
 thread_local std::mt19937 raisim::raibotController::gen_;
 thread_local std::normal_distribution<double> raisim::raibotController::normDist_(0., 1.);

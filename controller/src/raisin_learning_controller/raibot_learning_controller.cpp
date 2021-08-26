@@ -15,6 +15,7 @@ using std::placeholders::_2;
 
 raibotLearningController::raibotLearningController()
 : Controller("raisin_learning_controller"),
+  actor_(72, 2, {256, 128}), estimator_({256, 128}),
   param_(parameter::ParameterContainer::getRoot()["raibotLearningController"])
 {
   param_.loadFromPackageParameterFile("raisin_learning_controller");
@@ -26,7 +27,7 @@ raibotLearningController::raibotLearningController()
 
 bool raibotLearningController::create(raisim::World *world) {
   control_dt_ = 0.01;
-  communication_dt_ = 0.0025;
+  communication_dt_ = 0.00025;
   raibotController_.create(world);
 
   std::filesystem::path pack_path(ament_index_cpp::get_package_prefix("raisin_learning_controller"));
@@ -37,10 +38,8 @@ bool raibotLearningController::create(raisim::World *world) {
   std::filesystem::path eout_mean_path = pack_path / std::string(param_("eout_mean_path"));
   std::filesystem::path eout_var_path = pack_path / std::string(param_("eout_var_path"));
 
-  actor_ = std::make_unique<torch::jit::script::Module>(torch::jit::load(actor_path.string()));
-  estimator_ = std::make_unique<torch::jit::script::Module>(torch::jit::load(estimator_path.string()));
-  RSFATAL_IF(actor_ == nullptr, "actor is not loaded");
-  RSFATAL_IF(estimator_ == nullptr, "estimator is not loaded");
+  actor_.readParamFromTxt(actor_path.string());
+  estimator_.readParamFromTxt(estimator_path.string());
 
   std::string in_line;
   std::ifstream obsMean_file(obs_mean_path.string());
@@ -56,28 +55,28 @@ bool raibotLearningController::create(raisim::World *world) {
 
   if (obsMean_file.is_open()) {
     for (int i = 0; i < obsMean_.size(); ++i) {
-      std::getline(obsMean_file, in_line);
+      std::getline(obsMean_file, in_line, ' ');
       obsMean_(i) = std::stof(in_line);
     }
   }
 
   if (obsVariance_file.is_open()) {
     for (int i = 0; i < obsVariance_.size(); ++i) {
-      std::getline(obsVariance_file, in_line);
+      std::getline(obsVariance_file, in_line, ' ');
       obsVariance_(i) = std::stof(in_line);
     }
   }
 
   if (eoutMean_file.is_open()) {
     for (int i = 0; i < eoutMean_.size(); ++i) {
-      std::getline(eoutMean_file, in_line);
+      std::getline(eoutMean_file, in_line, ' ');
       eoutMean_(i) = std::stof(in_line);
     }
   }
 
   if (eoutVariance_file.is_open()) {
     for (int i = 0; i < eoutVariance_.size(); ++i) {
-      std::getline(eoutVariance_file, in_line);
+      std::getline(eoutVariance_file, in_line, ' ');
       eoutVariance_(i) = std::stof(in_line);
     }
   }
@@ -86,6 +85,7 @@ bool raibotLearningController::create(raisim::World *world) {
   obsVariance_file.close();
   eoutMean_file.close();
   eoutVariance_file.close();
+
   return true;
 }
 
@@ -98,16 +98,18 @@ bool raibotLearningController::advance(raisim::World *world) {
   /// 100Hz controller
   if(clk_ % int(control_dt_ / communication_dt_ + 1e-10) == 0) {
     raibotController_.updateObservation(world);
-    raibotController_.advance(world, obsScalingAndGetAction());
+    raibotController_.advance(world, obsScalingAndGetAction().head(12));
   }
 
   clk_++;
   return true;
 }
 
-Eigen::Ref<Eigen::VectorXf> raibotLearningController::obsScalingAndGetAction() {
+Eigen::VectorXf raibotLearningController::obsScalingAndGetAction() {
+
   /// normalize the obs
   obs_ = raibotController_.getObservation().cast<float>();
+
   for (int i = 0; i < obs_.size(); ++i) {
     obs_(i) = (obs_(i) - obsMean_(i)) / std::sqrt(obsVariance_(i) + 1e-8);
     if (obs_(i) > 10) { obs_(i) = 10.0; }
@@ -115,9 +117,9 @@ Eigen::Ref<Eigen::VectorXf> raibotLearningController::obsScalingAndGetAction() {
   }
 
   /// forward the obs to the estimator
-  std::vector<torch::jit::IValue> e_in;
-  e_in.push_back(eigenVectorToTorchTensor(obs_.tail(obs_.size() - 3)));
-  Eigen::VectorXf e_out = torchTensorToEigenVector(estimator_->forward(e_in).toTensor());
+  Eigen::Matrix<float, 33, 1> e_in;
+  e_in = obs_.tail(obs_.size() - 3);
+  Eigen::VectorXf e_out = estimator_.forward(e_in);
 
   /// normalize the output of estimator
   for (int i = 0; i < e_out.size(); ++i) {
@@ -127,15 +129,16 @@ Eigen::Ref<Eigen::VectorXf> raibotLearningController::obsScalingAndGetAction() {
   }
 
   /// concat obs and e_out and forward to the actor
-  actor_input_ << obs_, e_out;
-  std::vector<torch::jit::IValue> inputs;
-  inputs.push_back(eigenVectorToTorchTensor(actor_input_));
-  Eigen::VectorXf action = torchTensorToEigenVector(actor_->forward(inputs).toTensor());
+  Eigen::Matrix<float, 44, 1> actor_input;
+  actor_input << obs_, e_out;
+  Eigen::VectorXf action = actor_.forward(actor_input);
+
   return action;
 }
 
 bool raibotLearningController::reset(raisim::World *world) {
   raibotController_.reset(world);
+  actor_.initHidden();
   clk_ = 0;
   return true;
 }

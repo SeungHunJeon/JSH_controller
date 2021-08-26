@@ -1,23 +1,23 @@
 actor_path:
-  value: rsc/actor_29500.pt
+  value: rsc/actor_60000.txt
   dtype: string
 
 estimator_path:
-  value: rsc/estimator_29500.pt
+  value: rsc/estimator_60000.txt
   dtype: string
 
 obs_mean_path:
-  value: rsc/obs_mean29500.csv
+  value: rsc/obs_mean60000.csv
   dtype: string
 
 obs_var_path:
-  value: rsc/obs_mean29500.csv
+  value: rsc/obs_var60000.csv
   dtype: string
 
 eout_mean_path:
-  value: rsc/eout_mean29500.csv
+  value: rsc/eout_mean60000.csv
   dtype: string
 
 eout_var_path:
-  value: rsc/eout_mean29500.csv
+  value: rsc/eout_var60000.csv
   dtype: string

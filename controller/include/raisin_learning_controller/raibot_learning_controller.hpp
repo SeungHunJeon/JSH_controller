@@ -11,6 +11,7 @@
 #include "raisin_controller/controller.hpp"
 #include "raisin_interfaces/srv/vector3.hpp"
 #include "torch/script.h"
+#include "helper/neuralNet.hpp"
 
 namespace raisin {
 
@@ -22,7 +23,7 @@ class raibotLearningController : public Controller {
   raibotLearningController();
   bool create(raisim::World *world) final;
   bool init(raisim::World *world) final;
-  Eigen::Ref<Eigen::VectorXf> obsScalingAndGetAction();
+  Eigen::VectorXf obsScalingAndGetAction();
   bool advance(raisim::World *world) final;
   bool reset(raisim::World *world) final;
   bool terminate(raisim::World *world) final;
@@ -42,9 +43,13 @@ class raibotLearningController : public Controller {
   Eigen::VectorXf obs_, obsMean_, obsVariance_, eoutMean_, eoutVariance_, actor_input_;
   int clk_ = 0;
   double control_dt_, communication_dt_;
-  std::unique_ptr<torch::jit::script::Module> actor_;
-  std::unique_ptr<torch::jit::script::Module> estimator_;
+  raisim::nn::LSTM_MLP<float, 44, 12, raisim::nn::ActivationType::leaky_relu> actor_;
+  raisim::nn::Linear<float, 33, 8, raisim::nn::ActivationType::leaky_relu> estimator_;
+//  std::unique_ptr<torch::jit::script::Module> actor_;
+//  std::unique_ptr<torch::jit::script::Module> estimator_;
+
   parameter::ParameterContainer & param_;
+
 };
 
 }
