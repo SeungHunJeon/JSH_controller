@@ -15,7 +15,8 @@ using std::placeholders::_2;
 
 raibotLearningController::raibotLearningController()
 : Controller("raisin_learning_controller"),
-  actor_(72, 2, {256, 128}), estimator_({256, 128}),
+  actor_(72, 2, {256, 128}),
+  estimator_(36, 1, {128, 128}),
   param_(parameter::ParameterContainer::getRoot()["raibotLearningController"])
 {
   param_.loadFromPackageParameterFile("raisin_learning_controller");
@@ -101,6 +102,10 @@ bool raibotLearningController::advance(raisim::World *world) {
     raibotController_.advance(world, obsScalingAndGetAction().head(12));
   }
 
+  if(!param_("real_robot")) {
+    raibotController_.updateBodyLinAccel(world);
+  }
+  
   clk_++;
   return true;
 }
@@ -110,16 +115,19 @@ Eigen::VectorXf raibotLearningController::obsScalingAndGetAction() {
   /// normalize the obs
   obs_ = raibotController_.getObservation().cast<float>();
 
-  for (int i = 0; i < obs_.size(); ++i) {
+  for (int i = 3; i < obs_.size(); ++i) {
     obs_(i) = (obs_(i) - obsMean_(i)) / std::sqrt(obsVariance_(i) + 1e-8);
     if (obs_(i) > 10) { obs_(i) = 10.0; }
     else if (obs_(i) < -10) { obs_(i) = -10.0; }
   }
 
   /// forward the obs to the estimator
-  Eigen::Matrix<float, 33, 1> e_in;
+  Eigen::Matrix<float, 36, 1> e_in;
   e_in = obs_.tail(obs_.size() - 3);
   Eigen::VectorXf e_out = estimator_.forward(e_in);
+
+  /// set estimated velocity in controller
+  raibotController_.setEstLinVel(e_out.segment(1, 3));
 
   /// normalize the output of estimator
   for (int i = 0; i < e_out.size(); ++i) {
@@ -128,8 +136,17 @@ Eigen::VectorXf raibotLearningController::obsScalingAndGetAction() {
     else if (e_out(i) < -10) { e_out(i) = -10.0; }
   }
 
+  /// normalize the obs
+  raibotController_.updateObsHead(obs_);
+
+  for (int i = 0; i < 3; ++i) {
+    obs_(i) = (obs_(i) - obsMean_(i)) / std::sqrt(obsVariance_(i) + 1e-8);
+    if (obs_(i) > 10) { obs_(i) = 10.0; }
+    else if (obs_(i) < -10) { obs_(i) = -10.0; }
+  }
+
   /// concat obs and e_out and forward to the actor
-  Eigen::Matrix<float, 44, 1> actor_input;
+  Eigen::Matrix<float, 47, 1> actor_input;
   actor_input << obs_, e_out;
   Eigen::VectorXf action = actor_.forward(actor_input);
 
@@ -139,6 +156,7 @@ Eigen::VectorXf raibotLearningController::obsScalingAndGetAction() {
 bool raibotLearningController::reset(raisim::World *world) {
   raibotController_.reset(world);
   actor_.initHidden();
+  estimator_.initHidden();
   clk_ = 0;
   return true;
 }

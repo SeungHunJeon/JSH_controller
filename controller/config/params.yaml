@@ -1,3 +1,7 @@
+real_robot:
+  value: false
+  dtype: bool
+
 actor_path:
   value: rsc/actor_60000.txt
   dtype: string

@@ -64,7 +64,7 @@ class raibotController {
     raibot->setGeneralizedForce(Eigen::VectorXd::Zero(gvDim_));
 
     /// MUST BE DONE FOR ALL ENVIRONMENTS
-    obDim_ = 36; estDim_=8; hvDim_ = 23;
+    obDim_ = 39; estDim_ = 8; hvDim_ = 23;
     actionDim_ = nJoints_; actionMean_.setZero(actionDim_); actionStd_.setZero(actionDim_);
     obDouble_.setZero(obDim_); estTarget_.setZero(estDim_); hvDouble_.setZero(hvDim_);
     command_.setZero(); airTime_.setZero(); preTarget_.setZero(actionDim_); pre2Target_.setZero(actionDim_);
@@ -88,10 +88,13 @@ class raibotController {
     footNormalForce_.setZero();
     footSlippage_ = 0.; groundHeight_ = 0.;
     nearFootHeightMap_.setZero(16);
+    bodyLinearAccel_.setZero();
 
     nominalJointPosWeight_.setZero(nJoints_);
-    nominalJointPosWeight_ << 1.414, 1., 1., 1.414, 1., 1., 1.414, 1., 1., 1.414, 1., 1.;
+    nominalJointPosWeight_ << 1.732, 1., 1., 1.732, 1., 1., 1.732, 1., 1., 1.732, 1., 1.;
 
+    simulation_dt_ = world->getTimeStep();
+    gravity_ = world->getGravity().e();
     updateObservation(world);
 
     positiveRwdTag_ = {"cmd_linear", "cmd_angular", "air_time_rew"};
@@ -146,7 +149,7 @@ class raibotController {
 
     standingMode_=false;
     /// command generation
-    if (uniDist_(gen_) < 0.6666) {
+    if (uniDist_(gen_) < 0.5) {
       command_ << eggSampler(uniDist_(gen_), uniDist_(gen_), 2.5, 1.5, 1.5),
                   uniDist_(gen_) * 1.5; // yaw turning
     } else {
@@ -174,6 +177,7 @@ class raibotController {
     footPos_.clear(); footVel_.clear();
     footNormalForce_.setZero();
     jointLimitMetric_ = 0;
+    init_accel_ = true;
 
     /// store previous variables
     preJointVel_ = gv_.tail(12);
@@ -240,6 +244,21 @@ class raibotController {
     for (int i = 9; i < gcDim_; i=i+3)
       if(gc_[i] < -2.4686 || gc_[i] > -0.0272)
         ++jointLimitMetric_;
+
+    /// estimate to linear accel
+    preBodyLinearVel_ = bodyLinearVel_;
+    raibot->getState(gc_, gv_);
+    raisim::Vec<4> quat; quat[0] = gc_[3]; quat[1] = gc_[4]; quat[2] = gc_[5]; quat[3] = gc_[6];
+    raisim::quatToRotMat(quat, rot_);
+    bodyLinearVel_ = rot_.e().transpose() * gv_.segment(0, 3);
+
+    /// exponential moving average for linear acceleration
+    if (init_accel_) {
+      bodyLinearAccel_ = (bodyLinearVel_ - preBodyLinearVel_) / simulation_dt_ - rot_.e().transpose() * gravity_;
+      init_accel_ = false;
+    } else {
+      bodyLinearAccel_ = 0.4 * ((bodyLinearVel_ - preBodyLinearVel_) / simulation_dt_ - rot_.e().transpose() * gravity_) + (1 - 0.4) * bodyLinearAccel_;
+    }
   }
 
   void afterStep(raisim::World *world, raisim::HeightMap *heightMap) {
@@ -349,15 +368,28 @@ class raibotController {
     raisim::Vec<4> quat;
     quat[0] = gc_[3]; quat[1] = gc_[4]; quat[2] = gc_[5]; quat[3] = gc_[6];
     raisim::quatToRotMat(quat, rot_);
+
     bodyLinearVel_ = rot_.e().transpose() * gv_.segment(0, 3);
     bodyAngularVel_ = rot_.e().transpose() * gv_.segment(3, 3);
+    init_accel_ = true;
 
-    obDouble_ << command_, /// command 3
+    obDouble_ << command_.head(2) - bodyLinearVel_.head(2),
+        command_(2) - bodyAngularVel_(2), /// command 3
         rot_.e().row(0).transpose(), /// body orientation: x-axis 3
         rot_.e().row(2).transpose(), /// body orientation: z-axis 3
         bodyAngularVel_, /// body angular velocity 3
+        bodyLinearAccel_, /// body linear acceleration 3
         gc_.tail(12), /// joint angles 12
         gv_.tail(12); /// joint velocity 12
+
+//    for (int i = 0; i < obDim_; ++i) {
+//      if (i < 3) continue;
+//      if (i < 9) { obDouble_(i) += 0.02 * normDist_(gen_); continue; }    // orientation
+//      if (i < 12) { obDouble_(i) += 0.10 * normDist_(gen_); continue; }   // angular vel
+//      if (i < 15) { obDouble_(i) += 0.10 * normDist_(gen_); continue; }   // linear accel
+//      if (i < 27) { obDouble_(i) += 0.03 * normDist_(gen_); continue; }   // joint angles
+//      if (i < 39) { obDouble_(i) += 0.25 * normDist_(gen_); continue; }   // joint velocities
+//    }
   }
 
   void updateEstTarget() {
@@ -406,6 +438,30 @@ class raibotController {
     return stepData_;
   }
 
+  void updateBodyLinAccel(raisim::World *world) {
+    auto* raibot = reinterpret_cast<raisim::ArticulatedSystem*>(world->getObject("robot"));
+    raibot->getState(gc_, gv_);
+    raisim::Vec<4> quat; quat[0] = gc_[3]; quat[1] = gc_[4]; quat[2] = gc_[5]; quat[3] = gc_[6];
+    raisim::quatToRotMat(quat, rot_);
+
+    preBodyLinearVel_ = bodyLinearVel_;
+    bodyLinearVel_ = rot_.e().transpose() * gv_.segment(0, 3);
+    if (init_accel_) {
+      bodyLinearAccel_ = (bodyLinearVel_ - preBodyLinearVel_) / simulation_dt_ - rot_.e().transpose() * gravity_;  /// only in simulation
+      init_accel_ = false;
+    } else {
+      bodyLinearAccel_ = 0.05 * ((bodyLinearVel_ - preBodyLinearVel_) / simulation_dt_ - rot_.e().transpose() * gravity_) + (1 - 0.05) * bodyLinearAccel_;
+    }
+  }
+
+  void setEstLinVel(const Eigen::Vector3f &estLinVel) {
+    estBodyLinearVel_ = estLinVel.cast<double>();
+  }
+
+  void updateObsHead(Eigen::VectorXf &obs) {
+    obs.head(2) = (command_.head(2) - estBodyLinearVel_.head(2)).cast<float>();
+  }
+
   void setSeed(int seed) { gen_.seed(seed); }
   int getObDim() const { return obDim_; }
   int getHvDim() const { return hvDim_; }
@@ -418,13 +474,14 @@ class raibotController {
   thread_local static std::uniform_real_distribution<double> uniDist_;
 
 private:
-  bool standingMode_;
+  bool standingMode_, init_accel_;
+  double simulation_dt_;
   size_t inContact_, idx_;
   raisim::Mat<3,3> rot_;
   int gcDim_, gvDim_, nJoints_;
   Eigen::VectorXd gc_init_, gv_init_, gc_, gv_, pTarget_, pTarget12_, vTarget_, preTarget_, pre2Target_, preJointVel_;
   Eigen::VectorXd actionMean_, actionStd_, obDouble_, estTarget_, hvDouble_;
-  Eigen::Vector3d bodyLinearVel_, bodyAngularVel_, command_;
+  Eigen::Vector3d bodyLinearVel_, bodyAngularVel_, command_, bodyLinearAccel_, preBodyLinearVel_, gravity_;
   std::vector<size_t> footIndices_, footFrameIndices_, footContactMask_;
   int obDim_=0, actionDim_=0, hvDim_=0, estDim_=0;
   Eigen::VectorXd stepData_, positiveRwd_, negativeRwd_;
@@ -437,7 +494,7 @@ private:
   std::vector<bool> contactStateCur_;
   std::vector<std::vector<bool>> contactState_;
   Eigen::VectorXd nearFootHeightMap_, nominalJointPosWeight_;
-
+  Eigen::Vector3d estBodyLinearVel_;
 };
 thread_local std::mt19937 raisim::raibotController::gen_;
 thread_local std::normal_distribution<double> raisim::raibotController::normDist_(0., 1.);
