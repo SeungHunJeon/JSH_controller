@@ -17,9 +17,11 @@ raibotLearningController::raibotLearningController()
 : Controller("raisin_learning_controller"),
   actor_(72, 2, {256, 128}),
   estimator_(36, 1, {128, 128}),
-  param_(parameter::ParameterContainer::getRoot()["raibotLearningController"])
+  param_(parameter::ParameterContainer::getRoot()["raibotLearningController"]),
+  raibotParam_(parameter::ParameterContainer::getRoot()["Raibot"])
 {
   param_.loadFromPackageParameterFile("raisin_learning_controller");
+  raibotParam_.loadFromPackageParameterFile("raisin_raibot");
 
   serviceSetCommand_ = this->create_service<raisin_interfaces::srv::Vector3>(
       "raisin_learning_controller/set_command", std::bind(&raibotLearningController::setCommand, this, _1, _2)
@@ -30,6 +32,8 @@ bool raibotLearningController::create(raisim::World *world) {
   control_dt_ = 0.01;
   communication_dt_ = 0.00025;
   raibotController_.create(world);
+
+  isRealRobot_ = raibotParam_("real_robot");
 
   std::filesystem::path pack_path(ament_index_cpp::get_package_prefix("raisin_learning_controller"));
   std::filesystem::path actor_path = pack_path / std::string(param_("actor_path"));
@@ -98,12 +102,15 @@ bool raibotLearningController::init(raisim::World *world) {
 bool raibotLearningController::advance(raisim::World *world) {
   /// 100Hz controller
   if(clk_ % int(control_dt_ / communication_dt_ + 1e-10) == 0) {
+    if (isRealRobot_){
+      raibotController_.updateBodyLinAccel(world, isRealRobot_);
+    }
     raibotController_.updateObservation(world);
     raibotController_.advance(world, obsScalingAndGetAction().head(12));
   }
 
-  if(!param_("real_robot")) {
-    raibotController_.updateBodyLinAccel(world);
+  if(!isRealRobot_) {
+    raibotController_.updateBodyLinAccel(world, isRealRobot_);
   }
   
   clk_++;

@@ -438,19 +438,25 @@ class raibotController {
     return stepData_;
   }
 
-  void updateBodyLinAccel(raisim::World *world) {
+  void updateBodyLinAccel(raisim::World *world, bool isRealRobot) {
     auto* raibot = reinterpret_cast<raisim::ArticulatedSystem*>(world->getObject("robot"));
     raibot->getState(gc_, gv_);
-    raisim::Vec<4> quat; quat[0] = gc_[3]; quat[1] = gc_[4]; quat[2] = gc_[5]; quat[3] = gc_[6];
-    raisim::quatToRotMat(quat, rot_);
 
-    preBodyLinearVel_ = bodyLinearVel_;
-    bodyLinearVel_ = rot_.e().transpose() * gv_.segment(0, 3);
-    if (init_accel_) {
-      bodyLinearAccel_ = (bodyLinearVel_ - preBodyLinearVel_) / simulation_dt_ - rot_.e().transpose() * gravity_;  /// only in simulation
-      init_accel_ = false;
+    if (isRealRobot) {
+      bodyLinearAccel_ = gc_.head(3);
     } else {
-      bodyLinearAccel_ = 0.05 * ((bodyLinearVel_ - preBodyLinearVel_) / simulation_dt_ - rot_.e().transpose() * gravity_) + (1 - 0.05) * bodyLinearAccel_;
+      raisim::Vec<4> quat; quat[0] = gc_[3]; quat[1] = gc_[4]; quat[2] = gc_[5]; quat[3] = gc_[6];
+      raisim::quatToRotMat(quat, rot_);
+
+      preBodyLinearVel_ = bodyLinearVel_;
+      bodyLinearVel_ = rot_.e().transpose() * gv_.segment(0, 3);
+
+      if (init_accel_) {
+        bodyLinearAccel_ = (bodyLinearVel_ - preBodyLinearVel_) / simulation_dt_ - rot_.e().transpose() * gravity_;  /// only in simulation
+        init_accel_ = false;
+      } else {
+        bodyLinearAccel_ = 0.05 * ((bodyLinearVel_ - preBodyLinearVel_) / simulation_dt_ - rot_.e().transpose() * gravity_) + (1 - 0.05) * bodyLinearAccel_;
+      }
     }
   }
 
