@@ -19,13 +19,6 @@ class raibotController {
 
  public:
 
-//  raibotController() : actor_(72, 2, {256, 128}) {
-//    actor_.readParamFromTxt("/home/suyoung/Workspace/raisimGymForRaisin/raisimGymTorch/data/raibot+on+rough+terrain+estimation/2021-08-13-04-33-26/actor.txt");
-//    Eigen::Matrix<float, 44, 1> ones; ones.setOnes();
-//    actor_.initHidden();
-//    std::cout<<actor_.forward(ones).transpose()<<std::endl;
-//  };
-
   enum class RewardType : int {
     CMDLINEAR = 1,
     CMDANGULAR,
@@ -190,6 +183,7 @@ class raibotController {
 
   bool advance(raisim::World *world, const Eigen::Ref<EigenVec>& action) {
     auto* raibot = reinterpret_cast<raisim::ArticulatedSystem*>(world->getObject("robot"));
+    raibot->setControlMode(ControlMode::PD_PLUS_FEEDFORWARD_TORQUE);
 
     /// action scaling
     pTarget12_ = action.cast<double>();
@@ -444,7 +438,6 @@ private:
   std::vector<std::vector<bool>> contactState_;
   Eigen::VectorXd nearFootHeightMap_, nominalJointPosWeight_;
 
-//  raisim::nn::LSTM_MLP<float, 44, 12, raisim::nn::ActivationType::leaky_relu> actor_;
 };
 thread_local std::mt19937 raisim::raibotController::gen_;
 thread_local std::normal_distribution<double> raisim::raibotController::normDist_(0., 1.);

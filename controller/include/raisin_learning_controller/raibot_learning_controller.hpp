@@ -45,8 +45,6 @@ class raibotLearningController : public Controller {
   double control_dt_, communication_dt_;
   raisim::nn::LSTM_MLP<float, 44, 12, raisim::nn::ActivationType::leaky_relu> actor_;
   raisim::nn::Linear<float, 33, 8, raisim::nn::ActivationType::leaky_relu> estimator_;
-//  std::unique_ptr<torch::jit::script::Module> actor_;
-//  std::unique_ptr<torch::jit::script::Module> estimator_;
 
   parameter::ParameterContainer & param_;
 
