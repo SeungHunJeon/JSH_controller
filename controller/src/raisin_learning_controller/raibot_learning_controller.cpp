@@ -102,17 +102,11 @@ bool raibotLearningController::init(raisim::World *world) {
 bool raibotLearningController::advance(raisim::World *world) {
   /// 100Hz controller
   if(clk_ % int(control_dt_ / communication_dt_ + 1e-10) == 0) {
-    if (isRealRobot_){
-      raibotController_.updateBodyLinAccel(world, isRealRobot_);
-    }
     raibotController_.updateObservation(world);
     raibotController_.advance(world, obsScalingAndGetAction().head(12));
   }
+  raibotController_.updateFilter(world, isRealRobot_);
 
-  if(!isRealRobot_) {
-    raibotController_.updateBodyLinAccel(world, isRealRobot_);
-  }
-  
   clk_++;
   return true;
 }
@@ -122,7 +116,7 @@ Eigen::VectorXf raibotLearningController::obsScalingAndGetAction() {
   /// normalize the obs
   obs_ = raibotController_.getObservation().cast<float>();
 
-  for (int i = 3; i < obs_.size(); ++i) {
+  for (int i = 0; i < obs_.size(); ++i) {
     obs_(i) = (obs_(i) - obsMean_(i)) / std::sqrt(obsVariance_(i) + 1e-8);
     if (obs_(i) > 10) { obs_(i) = 10.0; }
     else if (obs_(i) < -10) { obs_(i) = -10.0; }
@@ -133,23 +127,11 @@ Eigen::VectorXf raibotLearningController::obsScalingAndGetAction() {
   e_in = obs_.tail(obs_.size() - 3);
   Eigen::VectorXf e_out = estimator_.forward(e_in);
 
-  /// set estimated velocity in controller
-  raibotController_.setEstLinVel(e_out.segment(1, 3));
-
   /// normalize the output of estimator
   for (int i = 0; i < e_out.size(); ++i) {
     e_out(i) = (e_out(i) - eoutMean_(i)) / std::sqrt(eoutVariance_(i) + 1e-8);
     if (e_out(i) > 10) { e_out(i) = 10.0; }
     else if (e_out(i) < -10) { e_out(i) = -10.0; }
-  }
-
-  /// normalize the obs
-  raibotController_.updateObsHead(obs_);
-
-  for (int i = 0; i < 3; ++i) {
-    obs_(i) = (obs_(i) - obsMean_(i)) / std::sqrt(obsVariance_(i) + 1e-8);
-    if (obs_(i) > 10) { obs_(i) = 10.0; }
-    else if (obs_(i) < -10) { obs_(i) = -10.0; }
   }
 
   /// concat obs and e_out and forward to the actor
